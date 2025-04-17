@@ -2,6 +2,8 @@
 #include <vector>
 #include <cmath>
 #include <numeric>
+#include <sstream>
+#include <fstream>
 //#include "matplotlibcpp.h"
 
 //namespace plt = matplotlibcpp;
@@ -99,11 +101,54 @@ void create_equation_and_predict(vector<veri_cifti> veri, double Sxx, double Sxy
     cout << "R2: " << 1 - (error_kare/ort_kare) << endl;
 }
 
+
+struct Custom_Type{
+    vector<pair<int, double>> vec;
+};
+Custom_Type read_csv(string path){
+
+    ifstream fin;
+    
+    fin.open(path, ios::in);
+    int Store, Date, Weekly_Sales,Holiday_Flag,Temperature,Fuel_Price,CPI,Unemployment;
+    string line; // line holder
+
+    vector<pair<int,double>> data;
+    int i = 0;
+
+    while (getline(fin, line)){ // get the line in line variable
+
+        if (i==0) {i++; continue;} // skip the first line since they are headers
+        
+        stringstream ss(line);
+        vector<string> row;
+        string cell;
+
+        while(getline(ss, cell, ',')){ // get every value between ',' into cell variable
+
+            row.push_back(cell);
+        }
+
+        data.push_back({stoi(row[0]), stod(row[2])});
+        
+        cout << "store: " << data[i-1].first << " weekly_sales: " << data[i-1].second << endl;
+        i++;
+    }
+
+    Custom_Type new_data;
+    new_data.vec = data;
+    return new_data;
+}
+
 /*
     TODO: 
-        vectorler icin mean methodunu tanimla
+        spare the data in different stores, add time value, create the regression for each store
 */
 int main(){
+
+    Custom_Type our_data;
+    our_data = read_csv("Walmart_Sales.csv");
+    vector<pair<int, double>> new_veri = our_data.vec;
 
     vector<veri_cifti> veri;
 
