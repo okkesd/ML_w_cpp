@@ -48,33 +48,36 @@ double calculate_S_x_x(vector<int> x){
     return sum;
 }
 
-double calculate_S_x_y(vector<veri_cifti> veri){
+double calculate_S_x_y(vector<pair<int, double>> veri){
 
     double x_avg = 0;
     double y_avg = 0;
 
     for (int i = 0; i<veri.size(); i++){
-        x_avg += veri[i].getX();
-        y_avg += veri[i].getY();
+        x_avg += veri[i].first;
+        y_avg += veri[i].second;
     }
     
     x_avg = x_avg / veri.size();
     y_avg = y_avg / veri.size();
 
     double sum = 0;
+    double sum2 = 0;
+
     for (int i = 0; i<veri.size(); i++){
-        sum += (veri[i].getX() - x_avg) * (veri[i].getY() - y_avg);
+        sum += (veri[i].first - x_avg) * (veri[i].second - y_avg);
+        sum2 += (veri[i].first - x_avg) * (veri[i].first - x_avg);
     }
-    return sum;
+    return static_cast<double>(sum/sum2);
 }
 
-void create_equation_and_predict(vector<veri_cifti> veri, double Sxx, double Sxy){
+void create_equation_and_predict(vector<pair<int, double>> veri, double Sxx, double Sxy){
     double x_avg = 0;
     double y_avg = 0;
 
     for (int i = 0; i<veri.size(); i++){
-        x_avg += veri[i].getX();
-        y_avg += veri[i].getY();
+        x_avg += veri[i].first;
+        y_avg += veri[i].second;
     }
     
     x_avg = x_avg / veri.size();
@@ -88,11 +91,11 @@ void create_equation_and_predict(vector<veri_cifti> veri, double Sxx, double Sxy
     double ort_kare = 0;
 
     for (int i = 0; i<veri.size(); i++){
-        double y_pred = constant + coefficient * veri[i].getX();
-        //cout << "x=" << veri[i].getX() << " icin y_pred: " << y_pred << " (actual: " << veri[i].getY() <<")" << endl;
-        error += fabs(y_pred - veri[i].getY());
-        error_kare += (y_pred - veri[i].getY()) * (y_pred - veri[i].getY());
-        ort_kare += (y_avg - veri[i].getY()) * (y_avg - veri[i].getY());
+        double y_pred = constant + coefficient * veri[i].first;
+        //cout << "x=" << veri[i].first << " icin y_pred: " << y_pred << " (actual: " << veri[i].getY() <<")" << endl;
+        error += fabs(y_pred - veri[i].second);
+        error_kare += (y_pred - veri[i].second) * (y_pred - veri[i].second);
+        ort_kare += (y_avg - veri[i].second) * (y_avg - veri[i].second);
     }
 
     cout << "Absolute error: " << error << endl;
@@ -103,8 +106,9 @@ void create_equation_and_predict(vector<veri_cifti> veri, double Sxx, double Sxy
 
 
 struct Custom_Type{
-    vector<pair<int, double>> vec;
+    vector< pair <int, pair<int, double> > > vec; // we want to hold pair( int: store_num, pair( int: x_value, double: weekly_sales))
 };
+
 Custom_Type read_csv(string path){
 
     ifstream fin;
@@ -113,8 +117,11 @@ Custom_Type read_csv(string path){
     int Store, Date, Weekly_Sales,Holiday_Flag,Temperature,Fuel_Price,CPI,Unemployment;
     string line; // line holder
 
-    vector<pair<int,double>> data;
+    vector< pair< int, pair<int,double> >> data;
     int i = 0;
+
+    int store_num = 1;
+    int x_value = 1;
 
     while (getline(fin, line)){ // get the line in line variable
 
@@ -129,9 +136,20 @@ Custom_Type read_csv(string path){
             row.push_back(cell);
         }
 
-        data.push_back({stoi(row[0]), stod(row[2])});
+        if (store_num == stoi(row[0])){
+
+            data.push_back({stoi(row[0]), {x_value, stod(row[2])}}); // get store and weekly_sales while putting the x_value as sort of time serie
+            x_value++;
+        } else {
+            
+            store_num = stoi(row[0]);
+            x_value = 1;
+            data.push_back({stoi(row[0]), {x_value, stod(row[2])}}); // get store and weekly_sales
+            x_value++;
+        }
         
-        cout << "store: " << data[i-1].first << " weekly_sales: " << data[i-1].second << endl;
+        
+        //cout << "store: " << data[i-1].first << " weekly_sales: " << data[i-1].second.second << endl;
         i++;
     }
 
@@ -142,45 +160,44 @@ Custom_Type read_csv(string path){
 
 /*
     TODO: 
-        spare the data in different stores, add time value, create the regression for each store
+        create the regression for each store
+        evaluate the results, consider further improvements (plotting help from python)
 */
 int main(){
 
     Custom_Type our_data;
     our_data = read_csv("Walmart_Sales.csv");
-    vector<pair<int, double>> new_veri = our_data.vec;
+    vector< pair< int, pair<int, double> >> veri = our_data.vec; // it holds store and weekly_sales
 
-    vector<veri_cifti> veri;
+    int store_num = 1;
+    vector<pair<int, double>> store_data;
 
-    veri.push_back(veri_cifti(2,5));
-    veri.push_back(veri_cifti(6,7));
-    veri.push_back(veri_cifti(8,9));
-    veri.push_back(veri_cifti(10,16));
-    veri.push_back(veri_cifti(13,19));
+    for (auto row: veri){
+        if (row.first == store_num){
+            store_data.push_back({row.second.first, row.second.second});
+        }
+        
+    }
 
     vector<int> x_axis;
-
-    for (int i = 0; i<veri.size(); i++){
-        x_axis.push_back(veri[i].getX());
-
-    }   
+    for (int i = 1; i<store_data.size(); i++){
+        x_axis.push_back(i);
+    }
 
     double S_x_x = calculate_S_x_x(x_axis);
 
     cout << "Sxx: " << S_x_x << endl;
 
-    double S_x_y = calculate_S_x_y(veri);
+    double S_x_y = calculate_S_x_y(store_data);
 
     cout << "Sxy: " << S_x_y << endl;
 
-    create_equation_and_predict(veri, S_x_x, S_x_y);
-
-    cout << endl << "*** Veri***" << endl;
-    for (int i = 0; i < veri.size(); i++) {
-        
-        veri[i].print();
-        cout << endl;    
-    }
+    create_equation_and_predict(store_data, S_x_x, S_x_y);
+    cout << "data_size: " << store_data.size() << endl;
+    /*cout << endl << "*** Veri***" << endl;
+    for (int i = 0; i < veri.size(); i++) {  
+        cout << "( " << store_data[i].first << " - " <<  store_data[i].second << " )" << endl;
+    }*/
     
     
     return 0;
