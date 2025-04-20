@@ -71,7 +71,7 @@ double calculate_S_x_y(vector<pair<int, double>> veri){
     return static_cast<double>(sum/sum2);
 }
 
-void create_equation_and_predict(vector<pair<int, double>> veri, double Sxx, double Sxy){
+vector<double> create_equation_and_predict(vector<pair<int, double>> veri, double Sxx, double Sxy){
     double x_avg = 0;
     double y_avg = 0;
 
@@ -90,9 +90,12 @@ void create_equation_and_predict(vector<pair<int, double>> veri, double Sxx, dou
     double error_kare = 0;
     double ort_kare = 0;
 
+    vector<double> predictions;
+
     for (int i = 0; i<veri.size(); i++){
         double y_pred = constant + coefficient * veri[i].first;
         //cout << "x=" << veri[i].first << " icin y_pred: " << y_pred << " (actual: " << veri[i].getY() <<")" << endl;
+        predictions.push_back(y_pred);
         error += fabs(y_pred - veri[i].second);
         error_kare += (y_pred - veri[i].second) * (y_pred - veri[i].second);
         ort_kare += (y_avg - veri[i].second) * (y_avg - veri[i].second);
@@ -102,6 +105,7 @@ void create_equation_and_predict(vector<pair<int, double>> veri, double Sxx, dou
     cout << "Mean absolute error: " << error/veri.size() << endl;
     cout << "Mean squarred error: " << error_kare/veri.size() << endl;
     cout << "R2: " << 1 - (error_kare/ort_kare) << endl;
+    return predictions;
 }
 
 
@@ -162,6 +166,7 @@ Custom_Type read_csv(string path){
     TODO: 
         create the regression for each store
         evaluate the results, consider further improvements (plotting help from python)
+        implement gradient descent somehow (maybe change the logic of regression to different ways)
 */
 int main(){
 
@@ -169,8 +174,8 @@ int main(){
     our_data = read_csv("Walmart_Sales.csv");
     vector< pair< int, pair<int, double> >> veri = our_data.vec; // it holds store and weekly_sales
 
-    int store_num = 1;
-    vector<pair<int, double>> store_data;
+    int store_num = 12;
+    vector<pair<int, double>> store_data; // x and y
 
     for (auto row: veri){
         if (row.first == store_num){
@@ -192,8 +197,20 @@ int main(){
 
     cout << "Sxy: " << S_x_y << endl;
 
-    create_equation_and_predict(store_data, S_x_x, S_x_y);
+    vector<double> predictions = create_equation_and_predict(store_data, S_x_x, S_x_y); // hold the predictions in here
     cout << "data_size: " << store_data.size() << endl;
+
+    ofstream file("pred" + to_string(store_num) + ".csv");
+    file << "store,x,y,y_pred\n";
+    for (int i=0; i<store_data.size(); i++){
+
+        file << store_num << "," << store_data[i].first << "," << store_data[i].second << "," << predictions[i] << endl;
+    }
+    file.close();
+
+    string command = "python3 plot.py pred" + to_string(store_num) + ".csv";
+    system(command.c_str()); // run the above command on command line to show the plot
+
     /*cout << endl << "*** Veri***" << endl;
     for (int i = 0; i < veri.size(); i++) {  
         cout << "( " << store_data[i].first << " - " <<  store_data[i].second << " )" << endl;
