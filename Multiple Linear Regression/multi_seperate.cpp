@@ -22,12 +22,9 @@ struct Data_Row{
      performance(performance){}
 };
 
-void read_csv(string path, Eigen::MatrixXd& X_train, Eigen::VectorXd& y_train, Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, double test_size){
+void read_csv(string path, Eigen::MatrixXd& X, Eigen::VectorXd& y){
 
-    if (!(0 < test_size && test_size < 1)){
-        return;
-    }
-    double train_size = static_cast<double>(1 - test_size);
+    
     ifstream fin;
     
     fin.open(path, ios::in);
@@ -85,11 +82,49 @@ void read_csv(string path, Eigen::MatrixXd& X_train, Eigen::VectorXd& y_train, E
         y_temp(i) = y_values[i];
     }
 
-    X_train = X_temp.topRows(train_size * X_temp.rows());
-    y_train = y_temp.head(train_size * y_temp.size());
+    X = X_temp;
+    y = y_temp;
+}
 
-    X_test = X_temp.bottomRows(test_size * X_temp.rows());
-    y_test = y_temp.tail(test_size * y_temp.size());
+void feature_engineering(Eigen::MatrixXd& X){
+
+    Eigen::VectorXd studied_scor(X.rows());
+    Eigen::VectorXd studied_sample(X.rows());
+    Eigen::VectorXd scor_sample(X.rows());
+    Eigen::VectorXd studied_scor_sample(X.rows());
+
+    Eigen::MatrixXd new_X(X.rows(), X.cols()+4);
+    
+    for (int i = 0; i<X.rows(); i++){
+        studied_scor(i) = X.col(0)(i) * X.col(1)(i);
+        studied_sample(i) = X.col(0)(i) * X.col(4)(i);
+        scor_sample(i) = X.col(1)(i) * X.col(4)(i);
+        studied_scor_sample(i) = X.col(0)(i) * X.col(1)(i) * X.col(4)(i);
+    }
+
+    new_X.block(0,0, X.rows(), X.cols()) = X;
+
+    new_X.col(X.cols()) = studied_scor;    
+    new_X.col(X.cols()+1) = studied_sample;
+    new_X.col(X.cols()+2) = scor_sample;
+    new_X.col(X.cols()+3) = studied_scor_sample;
+    
+    X = new_X;
+}
+
+void train_test_split(Eigen::MatrixXd& X, Eigen::VectorXd& y, Eigen::MatrixXd& X_train, Eigen::VectorXd& y_train, 
+                      Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, double test_size){
+
+    if (!(0 < test_size && test_size < 1)){
+        return;
+    }
+    double train_size = static_cast<double>(1 - test_size);
+
+    X_train = X.topRows(train_size * X.rows());
+    y_train = y.head(train_size * y.size());
+
+    X_test = X.bottomRows(test_size * X.rows());
+    y_test = y.tail(test_size * y.size());
 }
 
 void fit_model(double& constant,Eigen::VectorXd& theta, Eigen::MatrixXd& X, Eigen::VectorXd& y, double alpha, int max_iterations){
@@ -138,7 +173,7 @@ void fit_model(double& constant,Eigen::VectorXd& theta, Eigen::MatrixXd& X, Eige
         //theta -= (alpha) * gradient;
         previous_cost = cost;
 
-        if (i % 100 == 0) {    
+        if (i % 1000 == 0) {    
             cout << "Iteration " << i << " - Cost: " << cost << endl;
         }
     }
@@ -192,22 +227,30 @@ pair<vector<double>, vector<double>> normalize_features(Eigen::MatrixXd& X_train
 // todo: train test split, get r2 for test data etc. 
 int main(){
 
+    Eigen::MatrixXd X;
+    Eigen::VectorXd y;
+
+    
+    read_csv("Student_Performance.csv", X, y);
+    cout << "csv read"<< endl;
+
+    feature_engineering(X);
+
     Eigen::MatrixXd X_train;
     Eigen::MatrixXd X_test;
     Eigen::VectorXd y_train;
     Eigen::VectorXd y_test;
 
-    double test_size = 0.3;
+    double test_size = 0.25;
     
-    read_csv("Student_Performance.csv", X_train, y_train, X_test, y_test, test_size);
-    cout << "csv read"<< endl;
+    train_test_split(X, y, X_train, y_train, X_test, y_test, test_size);
 
     Eigen::VectorXd y_pred;
-    Eigen::VectorXd theta = Eigen::VectorXd::Ones(5);  // 5 for features and 1 for bias
+    Eigen::VectorXd theta = Eigen::VectorXd::Ones(X.cols());  // 5 for features and 1 for bias
     double b = 1;
     double& constant = b;
-    double learning_rate = 0.00036;
-    int max_iterations = 12000;
+    double learning_rate = 0.00037;
+    int max_iterations = 150000;
 
     // normalize X_train and X_test
     auto [means, stddevs] = normalize_features(X_train, X_test); 
