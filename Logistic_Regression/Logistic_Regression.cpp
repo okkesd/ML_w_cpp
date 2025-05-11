@@ -171,7 +171,7 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
 
     for (int i = 0; i<X_categorical.size(); i++){
         Categorical row = X_categorical[i];
-        Eigen::RowVectorXd row_to_add(13);
+        Eigen::RowVectorXd row_to_add(12);
 
         row.gender=="female" ? row_to_add[0] = 0 : row_to_add[0] = 1;
 
@@ -193,10 +193,9 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
         map<string, int> home_own_map = {
             {"RENT", 2},
             {"OWN", 3},
-            {"MORTGAGE", 4},
-            {"OTHER", 5}
+            {"MORTGAGE", 4} // OTHER for all 0
         };
-        row_to_add.segment(2, 4).setZero();
+        row_to_add.segment(2, 3).setZero();
         if (home_own_map.count(row.home_own)) {
             row_to_add[home_own_map[row.home_own]] = 1;
         }
@@ -210,17 +209,36 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
             {"HOMEIMPROVEMENT", 10},
             {"DEBTCONSOLIDATION", 11},
         };
-        row_to_add.segment(6,6).setZero();
+        row_to_add.segment(5,6).setZero();
         if (intent_map.count(row.loan_intent)){
             row_to_add[intent_map[row.loan_intent]] = 1;
         }
 
         // No Yes
-        row.gender=="No" ? row_to_add[12] = 0 : row_to_add[12] = 1;
+        row.gender=="No" ? row_to_add[11] = 0 : row_to_add[11] = 1;
 
         new_categorical.row(i) = row_to_add;
     }
     return new_categorical;
+}
+
+vector<pair<double, double>> normalize_features(Eigen::MatrixXd& X, const vector<int> columns_to_normalize){
+
+    vector<pair<double, double>> mean_stddev;
+    
+    for (int i = 0; i<columns_to_normalize.size(); i++){
+
+        int col_num = columns_to_normalize[i];
+
+        double mean = X.col(col_num).mean();
+        double stddev = sqrt((X.col(col_num).array() - mean).square().sum() /X.rows());
+
+        X.col(col_num) = (X.col(col_num).array() - mean) / stddev;
+
+        mean_stddev.push_back(make_pair(mean, stddev));
+        
+    }
+    return mean_stddev;
 }
 
 double sigmoid_func(double input){
@@ -228,17 +246,22 @@ double sigmoid_func(double input){
     return 1/(1+pow(exp,(input * -1)));
 }
 
-// todo: person_income, loan_amount, credit score must be normalized, fit the model with gradient descent
+// todo: fit the model with gradient descent
 
 // to compile and run: g++ Logistic_Regresssion.cpp -o logistic -I ../eigen-3.4.0/ && ./logistic
 
 int main(){
 
-    Eigen::MatrixXd X;
+    Eigen::MatrixXd X; 
     vector<Categorical> X_categorical;
     vector<int> y;
 
-    read_csv("./loan_data.csv", X, X_categorical, y);
+    // X columns: age, income, emp_exp, loan_amnt, interese_rate, loan_percent_income, credit_hist_length, credit_score
+    read_csv("./loan_data.csv", X, X_categorical, y); 
+
+
+    vector<int> columns_to_normalize = {1, 3, 7};
+    vector<pair<double, double>> means_stddevs = normalize_features(X, columns_to_normalize);
 
     
     Eigen::MatrixXd new_X_categorical = encode_categorical(X_categorical);
@@ -250,6 +273,7 @@ int main(){
     X.resize(2,2);
     new_X_categorical.resize(2,2);
 
+    // fit model
 
     Eigen::VectorXd theta = Eigen::VectorXd::Ones(13);
     double b = 1;
