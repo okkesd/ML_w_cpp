@@ -31,7 +31,7 @@ struct Categorical{
     gender(gender), education(education), home_own(home_own), loan_intent(loan_intent), prev_loan_file(prev_loan_file) {}
 };
 
-void read_csv(string path, Eigen::MatrixXd& X, vector<Categorical>& X_categorical, vector<int>& y){ // Eigen::MatrixXd& X, Eigen::VectorXd& y
+void read_csv(string path, Eigen::MatrixXd& X, vector<Categorical>& X_categorical, Eigen::VectorXd& y){ // Eigen::MatrixXd& X, Eigen::VectorXd& y
 
     
     ifstream fin;
@@ -114,10 +114,16 @@ void read_csv(string path, Eigen::MatrixXd& X, vector<Categorical>& X_categorica
         X_temp.row(i) = X_rows[i];
         //cout<<  X_rows[i] << endl;
     }
-
+    
     X = X_temp;
     X_categorical = X_categorial_temp;
-    y = y_values;
+    
+    y.conservativeResize(y_values.size());
+    
+    for (int i = 0; i<y_values.size(); i++){
+        y(i) = y_values[i];
+    }
+    cout << "Done Reading csv" << endl;
 }
 
 Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
@@ -168,10 +174,11 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
     }
     
     Eigen::MatrixXd new_categorical(X_categorical.size(), 13); // 13 column (0-12)
-
+    
     for (int i = 0; i<X_categorical.size(); i++){
         Categorical row = X_categorical[i];
-        Eigen::RowVectorXd row_to_add(12);
+        
+        Eigen::RowVectorXd row_to_add(13);
 
         row.gender=="female" ? row_to_add[0] = 0 : row_to_add[0] = 1;
 
@@ -188,6 +195,7 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
         } else {
             cout << "erorrrrr on: "<< i << endl;
         }
+        
 
         // RENT OWN MORTGAGE OTHER
         map<string, int> home_own_map = {
@@ -215,10 +223,11 @@ Eigen::MatrixXd encode_categorical(const vector<Categorical>& X_categorical){
         }
 
         // No Yes
-        row.gender=="No" ? row_to_add[11] = 0 : row_to_add[11] = 1;
+        row.gender=="No" ? row_to_add[12] = 0 : row_to_add[12] = 1;
 
         new_categorical.row(i) = row_to_add;
     }
+    cout << "done encoding" << endl;
     return new_categorical;
 }
 
@@ -238,15 +247,108 @@ vector<pair<double, double>> normalize_features(Eigen::MatrixXd& X, const vector
         mean_stddev.push_back(make_pair(mean, stddev));
         
     }
+    cout << "Done normalize features" << endl;
     return mean_stddev;
 }
 
-double sigmoid_func(double input){
-    double exp = 2.71;
-    return 1/(1+pow(exp,(input * -1)));
+void train_test_split(Eigen::MatrixXd& X,Eigen::VectorXd& y, Eigen::MatrixXd& X_train, Eigen::VectorXd& y_train, 
+                        Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, double test_size=0.2){
+
+    double train_size = 1.0 - test_size;
+    int train_row_number = static_cast<int>(X.rows() * train_size);
+    int test_row_number = X.rows() - train_row_number;
+
+    /*cout <<"so far so good" << endl;
+    X_train.resize(train_row_number, X.cols());
+    y_train.resize(train_row_number);
+
+    X_test.resize(test_row_number, X.cols());
+    y_test.resize(test_row_number);*/
+
+    cout << "resize done" << endl;
+    X_train = X.topRows(train_row_number);
+    y_train = y.head(train_row_number);
+
+    X_test = X.bottomRows(test_row_number);
+    y_test = y.tail(test_row_number);
+
+    cout << "done train test split" << endl;
 }
 
-// todo: fit the model with gradient descent
+double sigmoid_func(double input);
+
+void fit_model(Eigen::MatrixXd& X, const Eigen::VectorXd& y, Eigen::VectorXd& theta, double& constant, double learning_rate, const int maximum_iterations){
+
+    double previous_cost = numeric_limits<double>::max();; // assign to maximum double number 
+    double epsilon = 1e-6;
+
+    for (int i = 0; i<maximum_iterations; i++){
+
+        Eigen::VectorXd b = Eigen::VectorXd::Ones(X.rows());
+        
+        Eigen::VectorXd y_pred = X * theta + (b * constant);
+        
+        Eigen::VectorXd predictions(y_pred.rows());
+        
+        for (int i = 0; i<y_pred.rows(); i++){
+        
+            predictions(i) = sigmoid_func(y_pred(i));
+        }
+        
+        // other version of loss: loss = -y * log(predictions) - (1 - y)log(1 - predictions) and cost is: cost = loss.array().sum() / loss.size()
+        
+        Eigen::VectorXd loss(predictions.size());
+        
+        loss = (predictions - y).array().square() / 2.0;
+        
+        for (int i = 0; i<loss.size(); i++){
+        
+            loss(i) = y(i) == 1 ? -log(predictions(i)) : -log(1.0 - predictions(i));
+        }
+        
+        double current_cost = loss.array().sum() / loss.size();
+        
+        Eigen::VectorXd new_theta;
+        for (int i = 0; i<X.cols(); i++){
+        
+            theta[i] -= learning_rate* ( ( (predictions - y).transpose() * X.col(i) ).sum()/ X.rows() );
+        }
+        constant -= learning_rate* ( (predictions - y).sum() / X.rows() );
+
+
+        if (abs(current_cost - previous_cost) < epsilon){
+
+            std::cout << "Converged at iteration " << i << endl;
+            cout << "Iteration " << i << " - Cost: " << current_cost << endl;
+            break;
+        }
+
+        // if not breaking, update the cost
+        previous_cost = current_cost;
+
+        if (i%100 == 0){
+            cout << "Iteration " << i << " - Cost: " << current_cost << endl;
+        }
+    }
+    
+    cout << "Done fit model" << endl;
+}
+
+double sigmoid_func(double input){
+    return 1.0 / (1.0 + exp(-input));
+}
+
+void test_model(Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, const Eigen::VectorXd& theta, const double constant){
+
+    Eigen::VectorXd b = Eigen::VectorXd::Ones(X_test.rows());
+    Eigen::VectorXd predictions = X_test * theta + (constant * b);
+
+    double mse = (predictions - y_test).array().square().sum() / predictions.size();
+    cout << "MSE is: " << mse << endl;
+    cout << "done test model" << endl;
+}
+
+// todo: train test split, cross fold evaluation
 
 // to compile and run: g++ Logistic_Regresssion.cpp -o logistic -I ../eigen-3.4.0/ && ./logistic
 
@@ -254,7 +356,7 @@ int main(){
 
     Eigen::MatrixXd X; 
     vector<Categorical> X_categorical;
-    vector<int> y;
+    Eigen::VectorXd y;
 
     // X columns: age, income, emp_exp, loan_amnt, interese_rate, loan_percent_income, credit_hist_length, credit_score
     read_csv("./loan_data.csv", X, X_categorical, y); 
@@ -263,9 +365,9 @@ int main(){
     vector<int> columns_to_normalize = {1, 3, 7};
     vector<pair<double, double>> means_stddevs = normalize_features(X, columns_to_normalize);
 
-    
     Eigen::MatrixXd new_X_categorical = encode_categorical(X_categorical);
     X_categorical.clear();
+
 
     Eigen::MatrixXd X_full(X.rows(), X.cols() + new_X_categorical.cols());
     X_full << X, new_X_categorical; // concatenates horizontally
@@ -273,11 +375,31 @@ int main(){
     X.resize(2,2);
     new_X_categorical.resize(2,2);
 
-    // fit model
-
-    Eigen::VectorXd theta = Eigen::VectorXd::Ones(13);
+    Eigen::VectorXd theta = Eigen::VectorXd::Zero(X_full.cols());
+    cout << theta.size() << endl;
     double b = 1;
     double& constant = b;
+    double learning_rate = 0.001;
+    int max_iterations = 1000;
+    double test_size = 0.25;
+
+    // train test split
+    Eigen::MatrixXd X_train;
+    Eigen::VectorXd y_train;
+
+    Eigen::MatrixXd X_test;
+    Eigen::VectorXd y_test;
+
+    train_test_split(X_full, y, X_train, y_train, X_test, y_test, test_size);
+
+
+    // fit model
+    fit_model(X_train, y_train, theta, constant, learning_rate, max_iterations);
+
+    test_model(X_test, y_test, theta, constant);
+
+    cout << "theta is\n" << theta << endl;
+
     
     return 0;
 }
