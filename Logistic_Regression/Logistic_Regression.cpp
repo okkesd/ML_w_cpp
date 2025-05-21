@@ -8,6 +8,8 @@
 #include <chrono>
 #include <string>
 #include <map>
+#include <random>
+#include <algorithm>
 
 using namespace std;
 
@@ -251,6 +253,86 @@ vector<pair<double, double>> normalize_features(Eigen::MatrixXd& X, const vector
     return mean_stddev;
 }
 
+void shuffle(Eigen::MatrixXd& X_full, Eigen::VectorXd& y){
+
+    if (X_full.rows() == y.size()) {
+
+
+        vector<int> indices(X_full.rows());
+        iota(indices.begin(), indices.end(), 0);  // Fill with 0...N-1
+
+        // Shuffle indices
+        random_device rd;
+        mt19937 g(rd());
+        shuffle(indices.begin(), indices.end(), g);
+
+        Eigen::MatrixXd X_shuffled(X_full.rows(), X_full.cols());
+        Eigen::VectorXd y_shuffled(y.size());
+    
+        for (int i = 0; i < indices.size(); ++i) {
+            X_shuffled.row(i) = X_full.row(indices[i]);
+            y_shuffled(i) = y(indices[i]);
+        }
+    
+        X_full = X_shuffled;
+        y = y_shuffled;
+
+    } else {
+        cout << "there is an error: X_full.rows() not equal to y.size()" << endl;
+    }
+
+    cout << "done shuffle" << endl;
+}
+
+// declare functions to use in k_fold_cross_validation
+double test_model(Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, const Eigen::VectorXd& theta, const double constant);
+void fit_model(Eigen::MatrixXd& X, const Eigen::VectorXd& y, Eigen::VectorXd& theta, double& constant, double learning_rate, const int maximum_iterations);
+
+
+double k_fold_cross_validation(Eigen::MatrixXd& X_full, Eigen::VectorXd& y, const int k, const double learning_rate, const int max_iterations){
+
+    int n_samples = X_full.rows();
+    int fold_size = n_samples / k;
+
+    vector<double> accuracies; // to store accuracies
+
+    for (int fold = 0; fold<k; fold++){
+        
+        int start = fold * fold_size;
+        int end = (fold == k - 1) ? n_samples : (fold + 1) * fold_size;
+
+        Eigen::MatrixXd X_val = X_full.middleRows(start, end - start); // from start, end - start sample
+        Eigen::VectorXd y_val = y.segment(start, end - start);
+
+        
+        Eigen::MatrixXd X_train(n_samples - (end - start), X_full.cols());
+        Eigen::VectorXd y_train(n_samples - (end - start));
+
+        int row = 0;
+        for (int i = 0; i<n_samples; i++){
+            
+            if (i>=start && i < end) continue;
+            X_train.row(row) = X_full.row(i);
+            y_train(row) = y(i);
+            row++;
+        }
+        
+
+        Eigen::VectorXd theta = Eigen::VectorXd::Zero(X_full.cols());
+        double b = 1;
+        double& constant = b;
+        fit_model(X_train, y_train, theta, constant, learning_rate, max_iterations);
+
+        cout << "here" << endl;
+        double accuracy = test_model(X_val, y_val, theta, constant);
+        cout << "here" << endl;
+        accuracies.push_back(accuracy);
+    }
+
+    double sum = accumulate(accuracies.begin(), accuracies.end(), 0.0);
+    return sum / accuracies.size();
+}
+
 void train_test_split(Eigen::MatrixXd& X,Eigen::VectorXd& y, Eigen::MatrixXd& X_train, Eigen::VectorXd& y_train, 
                         Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, double test_size=0.2){
 
@@ -281,6 +363,8 @@ void fit_model(Eigen::MatrixXd& X, const Eigen::VectorXd& y, Eigen::VectorXd& th
 
     double previous_cost = numeric_limits<double>::max();; // assign to maximum double number 
     double epsilon = 1e-6;
+
+    cout << X.rows() << "  " << X.cols() << "  " << y.size()  << endl;
 
     for (int i = 0; i<maximum_iterations; i++){
 
@@ -326,7 +410,7 @@ void fit_model(Eigen::MatrixXd& X, const Eigen::VectorXd& y, Eigen::VectorXd& th
         // if not breaking, update the cost
         previous_cost = current_cost;
 
-        if (i%100 == 0){
+        if (i%1000 == 0){
             cout << "Iteration " << i << " - Cost: " << current_cost << endl;
         }
     }
@@ -338,7 +422,7 @@ double sigmoid_func(double input){
     return 1.0 / (1.0 + exp(-input));
 }
 
-void test_model(Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, const Eigen::VectorXd& theta, const double constant){
+double test_model(Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, const Eigen::VectorXd& theta, const double constant){
 
     Eigen::VectorXd b = Eigen::VectorXd::Ones(X_test.rows());
     Eigen::VectorXd predictions = X_test * theta + (constant * b);
@@ -346,6 +430,8 @@ void test_model(Eigen::MatrixXd& X_test, Eigen::VectorXd& y_test, const Eigen::V
     double mse = (predictions - y_test).array().square().sum() / predictions.size();
     cout << "MSE is: " << mse << endl;
     cout << "done test model" << endl;
+
+    return mse;
 }
 
 // todo: train test split, cross fold evaluation
@@ -375,13 +461,16 @@ int main(){
     X.resize(2,2);
     new_X_categorical.resize(2,2);
 
+    shuffle(X_full, y);
+
     Eigen::VectorXd theta = Eigen::VectorXd::Zero(X_full.cols());
     cout << theta.size() << endl;
     double b = 1;
     double& constant = b;
-    double learning_rate = 0.001;
+    double learning_rate = 0.00001;
     int max_iterations = 1000;
     double test_size = 0.25;
+    int k = 5;
 
     // train test split
     Eigen::MatrixXd X_train;
@@ -389,6 +478,11 @@ int main(){
 
     Eigen::MatrixXd X_test;
     Eigen::VectorXd y_test;
+
+
+    double avg_score = k_fold_cross_validation(X_full, y, k, learning_rate, max_iterations);
+
+    cout << "Average score with k=5, MSE: " << avg_score << endl;
 
     train_test_split(X_full, y, X_train, y_train, X_test, y_test, test_size);
 
