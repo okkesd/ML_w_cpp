@@ -83,9 +83,10 @@ void train_perceptron(InputLayer& input_layer, const Eigen::MatrixXd& data, cons
 
                 cout << "output is not positive, updating weights..." << endl;
                 Eigen::RowVectorXd new_weights(input_layer.get_neuron_count());
-                for (int k = 0; k<one_row.size(); k++){
-                    new_weights[k] = one_row[k] + input_layer.get_weights()[k];
-                }
+                new_weights = (one_row * input_layer.get_weights());
+                //for (int k = 0; k<one_row.size(); k++){
+                //    new_weights[k] = one_row[k] + input_layer.get_weights()[k];
+                //}
                 
                 input_layer.adjust_weights(new_weights);
                 input_layer.print_weights();
@@ -93,7 +94,7 @@ void train_perceptron(InputLayer& input_layer, const Eigen::MatrixXd& data, cons
             }
         
         }
-        if (negative_output_count == 0){cout << "j is at the end " << j << endl; break;}
+        if (negative_output_count == 0){cout << "j is at the end (convergence)" << j << endl; break;}
     }
     cout << "\nTraining done, current weights: \n";
     input_layer.print_weights();
