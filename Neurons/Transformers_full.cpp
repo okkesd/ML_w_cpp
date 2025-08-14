@@ -18,6 +18,14 @@ class SingleHeadAttention{
         Eigen::MatrixXd w_q;
         Eigen::MatrixXd w_k;
         Eigen::MatrixXd w_v;
+        Eigen::MatrixXd w_o;
+
+        Eigen::MatrixXd Q;
+        Eigen::MatrixXd K;
+        Eigen::MatrixXd V;
+
+        Eigen::MatrixXd attn_scores;
+        Eigen::MatrixXd scaled_output_raw_b;
 
         Eigen::MatrixXd attention_weights;
         Eigen::MatrixXd output;
@@ -40,10 +48,11 @@ class SingleHeadAttention{
         }
 
         // should return a matrix
-        Eigen::MatrixXd scaled_dot_product(Eigen::MatrixXd Q, Eigen::MatrixXd K, Eigen::MatrixXd V){
+        Eigen::MatrixXd scaled_dot_product(Eigen::MatrixXd Q, Eigen::MatrixXd K, Eigen::MatrixXd V, int d_k){
 
-            Eigen::MatrixXd scores = Q * K.transpose();
+            Eigen::MatrixXd scores = Q * K.transpose() / sqrt(d_k);
             cout << "scores are calculated" << endl;
+            attn_scores = scores;
             // APPLY SOFTMAX HERE
             this->attention_weights = softmax(scores);
 
@@ -64,6 +73,7 @@ class SingleHeadAttention{
             w_q = Eigen::MatrixXd::Ones(dimensions, dimensions);
             w_k = Eigen::MatrixXd::Ones(dimensions, dimensions);
             w_v = Eigen::MatrixXd::Ones(dimensions, dimensions);
+            w_o = Eigen::MatrixXd::Ones(dimensions, dimensions);
 
             output_weigths = Eigen::MatrixXd::Ones(dimensions, output_dimension);
 
@@ -74,21 +84,60 @@ class SingleHeadAttention{
 
 
         // Eigen::MatrixXd
-        Eigen::MatrixXd attn_mechanism(Eigen::MatrixXd input){
+        Eigen::MatrixXd attn_mechanism(Eigen::MatrixXd input, int d_k){
 
-            Eigen::MatrixXd Q = input * w_q;
-            Eigen::MatrixXd K = input * w_k;
-            Eigen::MatrixXd V = input * w_v;
+            Q = input * w_q;
+            K = input * w_k;
+            V = input * w_v;
 
             cout << "first step is done. Q: " << Q.rows() << "," << Q.cols() << " - K: " << K.rows() << "," << K.cols() << " - V: " << V.rows() << "," << V.cols() << endl;
 
-            Eigen::MatrixXd scaled_output = scaled_dot_product(Q, K, V);
+            Eigen::MatrixXd scaled_output_raw = scaled_dot_product(Q, K, V, d_k);
+            scaled_output_raw_b = scaled_output_raw;
+
+            Eigen::MatrixXd scaled_output = scaled_output_raw * w_o; // 3,5 * 5,5 = 3,5
             cout << "scaled_dot_product is done, scaled_output: " << scaled_output.rows() << "," << scaled_output.cols() << endl;
             
             //Eigen::MatrixXd attention_output = scaled_output.transpose() * attention_weights;
             cout << "attention_output is done"<< endl;
 
             return scaled_output;
+        }
+
+        Eigen::MatrixXd get_attention_weights(){
+            return attention_weights;
+        }
+
+        Eigen::MatrixXd get_Q(){
+            return Q;
+        }
+        Eigen::MatrixXd get_K(){
+            return K;
+        }
+        Eigen::MatrixXd get_V(){
+            return V;
+        }
+
+        Eigen::MatrixXd get_scores(){
+            return attn_scores;
+        }
+
+        Eigen::MatrixXd get_w_q(){
+            return w_q;
+        }
+        Eigen::MatrixXd get_w_k(){
+            return w_k;
+        }
+        Eigen::MatrixXd get_w_v(){
+            return w_v;
+        }
+
+        Eigen::MatrixXd get_w_o(){
+            return w_o;
+        }
+
+        Eigen::MatrixXd get_scaled_output_raw(){
+            return scaled_output_raw_b;
         }
 };
 
@@ -102,6 +151,8 @@ class FeedForward{
 
         Eigen::MatrixXd weights1;
         Eigen::MatrixXd weights2;
+        Eigen::MatrixXd hidden;
+        Eigen::MatrixXd ff_input;
 
     public:
 
@@ -111,110 +162,38 @@ class FeedForward{
         layer1_neuron_count(layer1_neuron_count), layer2_neuron_count(layer2_neuron_count){
 
             // initialize weights
-            weights1 = Eigen::MatrixXd(input_dimensions, input_dimensions);
-            weights2 = Eigen::MatrixXd(input_dimensions, input_dimensions);
+            weights1 = Eigen::MatrixXd::Random(input_dimensions, input_dimensions) *0.01;
+            weights2 = Eigen::MatrixXd::Random(input_dimensions, input_dimensions) *0.01;
         }
 
         ~FeedForward(){cout << "FeedForward is deleted" << endl;}
 
         Eigen::MatrixXd forward(Eigen::MatrixXd input){
 
-            Eigen::MatrixXd out_first = input * weights1;
-
-            Eigen::MatrixXd out_second = out_first * weights2;
+            ff_input = input;
+            hidden = input * weights1;
+            cout << "hidden : " << hidden << endl;
+            Eigen::MatrixXd out_second = hidden * weights2;
 
             return out_second;
         }
 
-};
-
-class TransformersBlock{
-
-    private:
-
-        int dimensions;
-        int attn_output_dim;
-        int vocab_size;
-        
-        SingleHeadAttention attention;
-        FeedForward feed_forward;
-
-        Eigen::MatrixXd input;
-
-        //Eigen::MatrixXd weights1;
-        //Eigen::MatrixXd weights1;
-
-        Eigen::MatrixXd weights_final;
-
-        // for normalization
-        Eigen::VectorXd gamma1;
-        Eigen::VectorXd beta1;
-        Eigen::VectorXd gamma2;
-        Eigen::VectorXd beta2;
-
-        Eigen::MatrixXd layer_norm(Eigen::MatrixXd input, Eigen::VectorXd gamma, Eigen::VectorXd beta){
-
-            Eigen::MatrixXd normal_input(input.rows(), input.cols());
-
-            for (int i = 0; i<input.rows(); i++){
-
-                Eigen::RowVectorXd row = input.row(i);
-                double mean = row.mean();
-                double var = (row.array() - mean).square().mean();
-
-                // todo: make mean a vector and substract element wise
-                Eigen::RowVectorXd normalized = (row.array() -  mean) / sqrt(var + 1e-8);
-
-                normal_input.row(i) = gamma.array() * normalized.transpose().array() + beta.array();
-            }
-            cout << "layer norm is done"<< endl;
-            return normal_input;
+        Eigen::MatrixXd get_weights_1(){
+            return weights1;
         }
 
-    public:
-
-        TransformersBlock(){
-            attention = SingleHeadAttention();
-            feed_forward = FeedForward();
+        Eigen::MatrixXd get_weights_2(){
+            return weights2;
         }
 
-        TransformersBlock(int dimensions, int attn_output_dim, int vocab_size): dimensions(dimensions), attn_output_dim(attn_output_dim), vocab_size(vocab_size) {
-
-            attention = SingleHeadAttention(dimensions, attn_output_dim);
-            feed_forward = FeedForward(dimensions, 4, 4);
-
-            weights_final = Eigen::MatrixXd(dimensions, vocab_size);
-
-            gamma1 = Eigen::VectorXd::Ones(dimensions);
-            beta1 = Eigen::VectorXd::Ones(dimensions);
-            gamma2 = Eigen::VectorXd::Ones(dimensions);
-            beta2 = Eigen::VectorXd::Ones(dimensions);
+        Eigen::MatrixXd get_hidden(){
+            return hidden;
         }
 
-        ~TransformersBlock(){cout << "Transformers block is deleted" << endl;}
-
-        Eigen::MatrixXd main_logic(Eigen::MatrixXd input_data){
-
-            input = input_data;
-
-            Eigen::MatrixXd input_normal = layer_norm(input, gamma1, beta1);
-            
-
-            Eigen::MatrixXd attn_outputs = attention.attn_mechanism(input_normal);
-            cout << "attn_mechanism is done, attn_outputs: " << attn_outputs.rows() << "," << attn_outputs.cols() << endl;
-            input = input + attn_outputs;
-
-            Eigen::MatrixXd input_normal2 = layer_norm(input, gamma2, beta2);
-
-            // give input_normal2 to the feed_forward, do the job in there, add the results to input and then return that input as contexualized input, 
-            Eigen::MatrixXd ff_output = feed_forward.forward(input_normal2);
-            cout << "ff is done: ff_output: " << ff_output.rows() << "," << ff_output.cols() << endl;
-
-            input = input + ff_output;
-
-            return input;
-            // then linearization -> just one layer
+        Eigen::MatrixXd get_ff_input(){
+            return ff_input;
         }
+
 };
 
 class Linear{
@@ -237,17 +216,248 @@ class Linear{
 
             return logits;
         }
+
+        Eigen::MatrixXd get_weights_final(){
+            return weights_final;
+        }
 };
 
-Eigen::VectorXd softmax(Eigen::VectorXd input){
 
-    Eigen::VectorXd scores(input.size());
-    double max_val = input.maxCoeff();
-    Eigen::VectorXd exp_scores = (input.array() - max_val).exp();
-    scores = exp_scores / exp_scores.sum();
+class TransformersBlock{
 
-    return scores;
-}
+    private:
+
+        int dimensions;
+        int attn_output_dim;
+        int vocab_size;
+        int num_head;
+        int d_k;
+        
+        SingleHeadAttention attention;
+        FeedForward feed_forward;
+        Linear linear_layer;
+
+        Eigen::MatrixXd input;
+
+        //Eigen::MatrixXd weights1;
+        //Eigen::MatrixXd weights1;
+
+        Eigen::MatrixXd weights_final;
+        
+
+        // for normalization
+        Eigen::VectorXd gamma1;
+        Eigen::VectorXd beta1;
+        Eigen::VectorXd gamma2;
+        Eigen::VectorXd beta2;
+
+
+        // variables for backpropagation 
+        Eigen::RowVectorXd logits_b;
+
+        Eigen::MatrixXd contextualized_input;
+
+        Eigen::MatrixXd layer_norm(Eigen::MatrixXd input, Eigen::VectorXd gamma, Eigen::VectorXd beta){
+
+            Eigen::MatrixXd normal_input(input.rows(), input.cols());
+
+            for (int i = 0; i<input.rows(); i++){
+
+                Eigen::RowVectorXd row = input.row(i);
+                double mean = row.mean();
+                double var = (row.array() - mean).square().mean();
+
+                // todo: make mean a vector and substract element wise
+                Eigen::RowVectorXd normalized = (row.array() -  mean) / sqrt(var + 1e-8);
+
+                normal_input.row(i) = gamma.array() * normalized.transpose().array() + beta.array();
+            }
+            cout << "layer norm is done"<< endl;
+            return normal_input;
+        }
+
+        Eigen::VectorXd softmax(Eigen::VectorXd input){
+
+            Eigen::VectorXd scores(input.size());
+            double max_val = input.maxCoeff();
+            Eigen::VectorXd exp_scores = (input.array() - max_val).exp();
+            scores = exp_scores / exp_scores.sum();
+        
+            return scores;
+        }
+
+        Eigen::MatrixXd softmax_backward_simple(const Eigen::MatrixXd& d_output, const Eigen::MatrixXd& softmax_output) {
+            Eigen::MatrixXd d_input = d_output.cwiseProduct(softmax_output);  // Element-wise multiply
+            
+            for (int i = 0; i < d_output.rows(); i++) {
+                double sum = d_input.row(i).sum();
+                d_input.row(i) = d_input.row(i).array() - softmax_output.row(i).array() * sum;
+            }
+            return d_input;
+        }
+
+    public:
+
+        TransformersBlock(){
+            attention = SingleHeadAttention();
+            feed_forward = FeedForward();
+            linear_layer = Linear();
+        }
+
+        TransformersBlock(int dimensions, int attn_output_dim, int vocab_size): dimensions(dimensions), attn_output_dim(attn_output_dim), vocab_size(vocab_size) {
+
+            attention = SingleHeadAttention(dimensions, attn_output_dim);
+            feed_forward = FeedForward(dimensions, 4, 4);
+            linear_layer = Linear(dimensions, vocab_size);
+
+            weights_final = Eigen::MatrixXd(dimensions, vocab_size);
+
+            gamma1 = Eigen::VectorXd::Ones(dimensions);
+            beta1 = Eigen::VectorXd::Ones(dimensions);
+            gamma2 = Eigen::VectorXd::Ones(dimensions);
+            beta2 = Eigen::VectorXd::Ones(dimensions);
+
+            num_head = 1;
+            d_k = dimensions / num_head;
+        }
+
+        ~TransformersBlock(){cout << "Transformers block is deleted" << endl;}
+
+        Eigen::Index main_logic(Eigen::MatrixXd input_data){
+
+            input = input_data;
+
+            Eigen::MatrixXd input_normal = layer_norm(input, gamma1, beta1);
+            
+
+            Eigen::MatrixXd attn_outputs = attention.attn_mechanism(input_normal, d_k);
+            cout << "attn_mechanism is done, attn_outputs: " << attn_outputs.rows() << "," << attn_outputs.cols() << endl;
+            
+            input = input + attn_outputs;
+
+            Eigen::MatrixXd input_normal2 = layer_norm(input, gamma2, beta2);
+
+            // give input_normal2 to the feed_forward, do the job in there, add the results to input and then return that input as contexualized input, 
+            Eigen::MatrixXd ff_output = feed_forward.forward(input_normal2);
+            cout << "ff is done: ff_output: " << ff_output.rows() << "," << ff_output.cols() << endl;
+
+            input = input + ff_output;
+            contextualized_input = input;
+
+            Eigen::RowVectorXd last_token = input.row(input.rows() -1);
+            //return input;
+            // then linearization -> just one layer
+
+            Eigen::RowVectorXd logits = linear_layer.linearization(last_token);
+            logits_b = logits;
+
+            cout << "logits:" << logits << endl;
+            Eigen::RowVectorXd after_softmax = softmax(logits);
+
+            cout << "after softmax :" << after_softmax << endl;
+
+            double predicted_token_score = after_softmax.maxCoeff();
+            
+            cout << "predicted token score :" << predicted_token_score << endl;
+        
+            Eigen::Index maxIndex;
+            after_softmax.maxCoeff(&maxIndex);
+        
+            cout << "Predicted token index: " << maxIndex << endl;
+
+            return maxIndex;
+        }
+
+        void backpropagation(Eigen::VectorXd actual){
+            
+            Eigen::VectorXd d_logits = logits_b.transpose() - actual;
+
+            cout << "d_logits : " << d_logits << endl;
+
+            //cout << "contextualized_input last row size: " << contextualized_input.row(contextualized_input.rows() -1).size() << endl;
+
+            //cout << "d_logits last row size: " << d_logits.size() << endl;
+
+            Eigen::MatrixXd d_weight_final = contextualized_input.row(contextualized_input.rows() -1).transpose() * d_logits.transpose();
+
+            cout << "d weights final : " << d_weight_final << endl;
+
+            Eigen::MatrixXd weights_final = linear_layer.get_weights_final();
+
+            Eigen::VectorXd d_cont_inp_last = weights_final * d_logits;
+
+            cout << "d cont inp : " << d_cont_inp_last.transpose() << endl;
+
+            Eigen::MatrixXd d_cont_inp = Eigen::MatrixXd::Zero(contextualized_input.rows(), contextualized_input.cols());
+
+            d_cont_inp.row(d_cont_inp.rows() -1) = d_cont_inp_last;
+
+            cout << "d cont inp : " << d_cont_inp << endl;
+
+            // Feed forward
+            Eigen::MatrixXd d_input_ff = d_cont_inp;
+            Eigen::MatrixXd d_output_ff = d_cont_inp;
+
+            Eigen::MatrixXd weights_2 = feed_forward.get_weights_2();
+            Eigen::MatrixXd d_hidden = d_output_ff * weights_2.transpose();
+
+            Eigen::MatrixXd hidden = feed_forward.get_hidden();
+            Eigen::MatrixXd d_weight_2 = hidden.transpose() * d_output_ff;
+
+            cout << "d_weight_2: " << d_weight_2 << endl;
+            cout << "d hidden: " << d_hidden << endl;
+
+            Eigen::MatrixXd ff_input = feed_forward.get_ff_input();
+            Eigen::MatrixXd d_weight_1 = ff_input.transpose() * d_hidden;
+
+            Eigen::MatrixXd weights_1 = feed_forward.get_weights_1();
+            Eigen::MatrixXd d_ff_input = d_hidden * weights_1.transpose();
+
+            cout << "d_weight_1: " << d_weight_1 << endl;
+            cout << "d ff input: " << d_ff_input << endl;
+
+            Eigen::MatrixXd d_input_after_attention = d_input_ff + d_ff_input;
+
+            // Attention Mechanism
+            Eigen::MatrixXd d_input_attn = d_input_after_attention;
+            Eigen::MatrixXd d_output_attn = d_input_after_attention;
+
+            Eigen::MatrixXd w_o = attention.get_w_o();
+            Eigen::MatrixXd scaled_output_raw = attention.get_scaled_output_raw();
+
+            Eigen::MatrixXd d_w_o = scaled_output_raw.transpose() * d_output_attn;
+            Eigen::MatrixXd d_scaled_output_raw = d_output_attn * w_o.transpose();
+
+
+            Eigen::MatrixXd attn_weights = attention.get_attention_weights();
+            Eigen::MatrixXd d_attn_V = attn_weights.transpose() * d_scaled_output_raw; // for attn_output = attn_weights * V
+
+            Eigen::MatrixXd attn_V = attention.get_V();
+            Eigen::MatrixXd d_attn_weights = d_scaled_output_raw * attn_V.transpose();
+
+
+            Eigen::MatrixXd d_scores = softmax_backward_simple(d_attn_weights, attn_weights);
+
+            Eigen::MatrixXd scores = attention.get_scores();
+            Eigen::MatrixXd attn_Q = attention.get_Q();
+            Eigen::MatrixXd attn_K = attention.get_K();
+
+            Eigen::MatrixXd d_attn_Q = ( d_scores * attn_K ) / sqrt(d_k);
+            Eigen::MatrixXd d_attn_K = ((attn_Q.transpose() * d_scores).transpose()) / sqrt(d_k);
+
+            cout << "d_K: " << d_attn_K << endl;
+
+            Eigen::MatrixXd w_q = attention.get_w_q();
+            Eigen::MatrixXd w_k = attention.get_w_k();
+            Eigen::MatrixXd w_v = attention.get_w_v();
+
+            // every row of d_raw_input points to the gradient of the embedding
+            Eigen::MatrixXd d_raw_input = d_input_attn + (d_attn_K * w_k + d_attn_Q * w_q + d_attn_V * w_v);
+        }
+
+};
+
+
 
 Eigen::MatrixXd positional_encoding(Eigen::MatrixXd input, const int embed_dimension){
 
@@ -271,14 +481,14 @@ Eigen::MatrixXd positional_encoding(Eigen::MatrixXd input, const int embed_dimen
     return pos_en;
 }
 
-// to compile and run: g++ SingleHead.cpp -o SingleHead -I ../eigen-3.4.0/ && ./SingleHead
+// to compile and run: g++ Transformers_full.cpp -o Transformers_full -I ../eigen-3.4.0/ && ./Transformers_full
 
 int main(){
 
 
     const int sequntial_len = 3;
     const int embedding_dimension = 5;
-    const int vocab_size = 10;
+    const int vocab_size = 5;
     srand(time(nullptr));
 
     // TEST
@@ -293,30 +503,14 @@ int main(){
 
     TransformersBlock tr_block(embedding_dimension, embedding_dimension, vocab_size); // attn_output_dim is the same with embed_dim for now
 
-    Eigen::MatrixXd contextualized_input = tr_block.main_logic(encoded_input);
-
-    //cout << contextualized_input << endl;
-    Eigen::RowVectorXd last_token = contextualized_input.row(contextualized_input.rows() -1);
-
-    Linear linear_layer(embedding_dimension, vocab_size);
-
-    Eigen::RowVectorXd logits = linear_layer.linearization(last_token);
-
-    cout << "last token : " << last_token << endl;
-    cout << "logits: " <<  logits << endl;
-
-    Eigen::RowVectorXd after_softmax = softmax(logits);
-
-    cout << "after softmax :" << after_softmax << endl;
-
-    double predicted_token_score = after_softmax.maxCoeff();
+    Eigen::Index predicted_token_index = tr_block.main_logic(encoded_input);
     
-    cout << "predicted token score :" << predicted_token_score << endl;
 
-    Eigen::Index maxIndex;
-    after_softmax.maxCoeff(&maxIndex);
+    Eigen::VectorXd actual(5);
+    actual << 0,0,1,0,0;
 
-    cout << "Predicted token index: " << maxIndex << endl;
+    cout << "actual: " << actual << endl;
+    tr_block.backpropagation(actual);
 
     return 0;
 }
