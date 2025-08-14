@@ -20,6 +20,18 @@ class SingleHeadAttention{
         Eigen::MatrixXd w_v;
         Eigen::MatrixXd w_o;
 
+        Eigen::MatrixXd m_w_o;
+        Eigen::MatrixXd v_w_o;
+
+        Eigen::MatrixXd m_w_k;
+        Eigen::MatrixXd v_w_k;
+
+        Eigen::MatrixXd m_w_q;
+        Eigen::MatrixXd v_w_q;
+
+        Eigen::MatrixXd m_w_v;
+        Eigen::MatrixXd v_w_v;
+
         Eigen::MatrixXd Q;
         Eigen::MatrixXd K;
         Eigen::MatrixXd V;
@@ -74,6 +86,18 @@ class SingleHeadAttention{
             w_k = Eigen::MatrixXd::Ones(dimensions, dimensions);
             w_v = Eigen::MatrixXd::Ones(dimensions, dimensions);
             w_o = Eigen::MatrixXd::Ones(dimensions, dimensions);
+
+            m_w_o = Eigen::MatrixXd::Zero(dimensions, dimensions);
+            v_w_o = Eigen::MatrixXd::Zero(dimensions, dimensions);
+
+            m_w_k = Eigen::MatrixXd::Zero(dimensions, dimensions);
+            v_w_k = Eigen::MatrixXd::Zero(dimensions, dimensions);
+
+            m_w_v = Eigen::MatrixXd::Zero(dimensions, dimensions);
+            v_w_v = Eigen::MatrixXd::Zero(dimensions, dimensions);
+
+            m_w_q = Eigen::MatrixXd::Zero(dimensions, dimensions);
+            v_w_q = Eigen::MatrixXd::Zero(dimensions, dimensions);
 
             output_weigths = Eigen::MatrixXd::Ones(dimensions, output_dimension);
 
@@ -139,6 +163,89 @@ class SingleHeadAttention{
         Eigen::MatrixXd get_scaled_output_raw(){
             return scaled_output_raw_b;
         }
+
+        void update_w_o(Eigen::MatrixXd d_w_o, const double learning_rate, const int t){
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+            
+            m_w_o = beta1 * m_w_o + (1 - beta1) * d_w_o;
+            v_w_o = beta2 * v_w_o + (1 - beta2) * d_w_o.array().square().matrix();
+
+            // calculate m_hat and v_hat
+            Eigen::MatrixXd m_hat = m_w_o / (1 - pow(beta1, t));
+            Eigen::MatrixXd v_hat = v_w_o / (1 - pow(beta2, t));
+
+            // I'm not sure of this, we need to clarify it
+            Eigen::MatrixXd new_w_o = w_o - learning_rate * weight_decay * w_o;
+            new_w_o = ( new_w_o - learning_rate * ( m_hat.array() / (v_hat.array().sqrt() + eps) ).matrix());
+
+            w_o = new_w_o;
+        }
+
+        void update_w_k(Eigen::MatrixXd d_w_k, const double learning_rate, const int t){
+         
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+            
+            m_w_k = beta1 * m_w_k + (1 - beta1) * d_w_k;
+            v_w_k = beta2 * v_w_k + (1 - beta2) * d_w_k.array().square().matrix();
+
+            // calculate m_hat and v_hat
+            Eigen::MatrixXd m_hat = m_w_k / (1 - pow(beta1, t));
+            Eigen::MatrixXd v_hat = v_w_k / (1 - pow(beta2, t));
+
+            // I'm not sure of this, we need to clarify it
+            Eigen::MatrixXd new_w_k = w_k - learning_rate * weight_decay * w_k;
+            new_w_k = ( new_w_k - learning_rate * ( m_hat.array() / (v_hat.array().sqrt() + eps) ).matrix());
+
+            w_k = new_w_k;
+        }
+
+        void update_w_q(Eigen::MatrixXd d_w_q, const double learning_rate, const int t){
+         
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+            
+            m_w_q = beta1 * m_w_q + (1 - beta1) * d_w_q;
+            v_w_q = beta2 * v_w_q + (1 - beta2) * d_w_q.array().square().matrix();
+
+            // calculate m_hat and v_hat
+            Eigen::MatrixXd m_hat = m_w_q / (1 - pow(beta1, t));
+            Eigen::MatrixXd v_hat = v_w_q / (1 - pow(beta2, t));
+
+            // I'm not sure of this, we need to clarify it
+            Eigen::MatrixXd new_w_q = w_q - learning_rate * weight_decay * w_q;
+            new_w_q = ( new_w_q - learning_rate * ( m_hat.array() / (v_hat.array().sqrt() + eps) ).matrix());
+
+            w_q = new_w_q;
+        }
+
+        void update_w_v(Eigen::MatrixXd d_w_v, const double learning_rate, const int t){
+         
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+            
+            m_w_v = beta1 * m_w_v + (1 - beta1) * d_w_v;
+            v_w_v = beta2 * v_w_v + (1 - beta2) * d_w_v.array().square().matrix();
+
+            // calculate m_hat and v_hat
+            Eigen::MatrixXd m_hat = m_w_v / (1 - pow(beta1, t));
+            Eigen::MatrixXd v_hat = v_w_v / (1 - pow(beta2, t));
+
+            // I'm not sure of this, we need to clarify it
+            Eigen::MatrixXd new_w_v = w_v - learning_rate * weight_decay * w_v;
+            new_w_v = ( new_w_v - learning_rate * ( m_hat.array() / (v_hat.array().sqrt() + eps) ).matrix());
+
+            w_v = new_w_v;
+        }
 };
 
 class FeedForward{
@@ -154,6 +261,11 @@ class FeedForward{
         Eigen::MatrixXd hidden;
         Eigen::MatrixXd ff_input;
 
+        Eigen::MatrixXd m_weight_1;
+        Eigen::MatrixXd v_weight_1;
+        Eigen::MatrixXd m_weight_2;
+        Eigen::MatrixXd v_weight_2;
+    
     public:
 
         FeedForward(){}
@@ -164,6 +276,11 @@ class FeedForward{
             // initialize weights
             weights1 = Eigen::MatrixXd::Random(input_dimensions, input_dimensions) *0.01;
             weights2 = Eigen::MatrixXd::Random(input_dimensions, input_dimensions) *0.01;
+
+            m_weight_1 = Eigen::MatrixXd::Zero(input_dimensions, input_dimensions);
+            v_weight_1 = Eigen::MatrixXd::Zero(input_dimensions, input_dimensions);
+            m_weight_2 = Eigen::MatrixXd::Zero(input_dimensions, input_dimensions);
+            v_weight_2 = Eigen::MatrixXd::Zero(input_dimensions, input_dimensions);
         }
 
         ~FeedForward(){cout << "FeedForward is deleted" << endl;}
@@ -176,6 +293,44 @@ class FeedForward{
             Eigen::MatrixXd out_second = hidden * weights2;
 
             return out_second;
+        }
+
+        void update_weight_2(Eigen::MatrixXd d_weight_2, const double learning_rate, const int t){
+
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+
+            m_weight_2 = beta1 * m_weight_2 * (1 - beta1) * d_weight_2;
+            v_weight_2 = beta2 * v_weight_2 * (1 - beta2) * d_weight_2.array().square().matrix();
+
+            Eigen::MatrixXd m_hat = beta1 * m_weight_2 / (1 - pow(beta1,t));
+            Eigen::MatrixXd v_hat = beta2 * v_weight_2 / (1 - pow(beta2,t));
+
+            Eigen::MatrixXd new_weight_2 = weights2 - learning_rate * weight_decay * d_weight_2;
+            new_weight_2 = new_weight_2 - learning_rate * (m_hat.array() / (v_hat.array().sqrt() + eps)).matrix();
+
+            weights2 = new_weight_2;
+        }
+
+        void update_weight_1(Eigen::MatrixXd d_weight_1, const double learning_rate, const int t){
+
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+
+            m_weight_1 = beta1 * m_weight_1 * (1 - beta1) * d_weight_1;
+            v_weight_1 = beta2 * v_weight_1 * (1 - beta2) * d_weight_1.array().square().matrix();
+
+            Eigen::MatrixXd m_hat = beta1 * m_weight_1 / (1 - pow(beta1,t));
+            Eigen::MatrixXd v_hat = beta2 * v_weight_1 / (1 - pow(beta2,t));
+
+            Eigen::MatrixXd new_weight_2 = weights1 - learning_rate * weight_decay * d_weight_1;
+            new_weight_2 = new_weight_2 - learning_rate * (m_hat.array() / (v_hat.array().sqrt() + eps)).matrix();
+
+            weights2 = new_weight_2;
         }
 
         Eigen::MatrixXd get_weights_1(){
@@ -199,6 +354,9 @@ class FeedForward{
 class Linear{
     private:
         Eigen::MatrixXd weights_final;
+        Eigen::MatrixXd m_weights_final;
+        Eigen::MatrixXd v_weights_final;
+
         int input_dimeansion;
         int vocab_size;
 
@@ -208,6 +366,8 @@ class Linear{
         Linear(int input_dimeansion, int vocab_size): input_dimeansion(input_dimeansion), vocab_size(vocab_size) {
 
             weights_final = Eigen::MatrixXd::Random(input_dimeansion, vocab_size) * 0.01;
+            m_weights_final = Eigen::MatrixXd::Zero(input_dimeansion, vocab_size);
+            v_weights_final = Eigen::MatrixXd::Zero(input_dimeansion, vocab_size);
         }
 
         Eigen::RowVectorXd linearization(Eigen::RowVectorXd input){
@@ -215,6 +375,29 @@ class Linear{
             Eigen::RowVectorXd logits = input * weights_final;
 
             return logits;
+        }
+
+        void update_weigths_final(Eigen::MatrixXd d_weight_final, int t, double learning_rate){
+
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double eps = 1e-8;
+            double weight_decay = 0.01;
+            
+            m_weights_final = beta1 * m_weights_final + (1 - beta1) * d_weight_final;
+            v_weights_final = beta2 * v_weights_final + (1 - beta2) * d_weight_final.array().square().matrix();
+
+            // calculate m_hat and v_hat
+            Eigen::MatrixXd m_hat = m_weights_final / (1 - pow(beta1, t));
+            Eigen::MatrixXd v_hat = v_weights_final / (1 - pow(beta2, t));
+
+            // I'm not sure of this, we need to clarify it
+            Eigen::MatrixXd new_weigths_final = weights_final - learning_rate * weight_decay * weights_final;
+            new_weigths_final = ( new_weigths_final - learning_rate * ( m_hat.array() / (v_hat.array().sqrt() + eps) ).matrix());
+            
+            weights_final = new_weigths_final;
+
+            cout << "updated weights final : " << endl;
         }
 
         Eigen::MatrixXd get_weights_final(){
@@ -227,6 +410,7 @@ class TransformersBlock{
 
     private:
 
+        int seq_len;
         int dimensions;
         int attn_output_dim;
         int vocab_size;
@@ -238,11 +422,16 @@ class TransformersBlock{
         Linear linear_layer;
 
         Eigen::MatrixXd input;
+        Eigen::MatrixXd calculated_input;
 
+        Eigen::MatrixXd m_calculated_input;
+        Eigen::MatrixXd v_calculated_input;
+
+        
         //Eigen::MatrixXd weights1;
         //Eigen::MatrixXd weights1;
 
-        Eigen::MatrixXd weights_final;
+        //Eigen::MatrixXd weights_final;
         
 
         // for normalization
@@ -296,6 +485,25 @@ class TransformersBlock{
             return d_input;
         }
 
+        void update_input(Eigen::MatrixXd d_raw_input, const double learning_rate, const int t){
+
+            double beta1 = 0.9;
+            double beta2 = 0.999;
+            double weight_decay = 0.001;
+            double eps = 1e-8;
+
+            m_calculated_input = beta1 * m_calculated_input + (1 - beta1) * d_raw_input;
+            v_calculated_input = beta2 * v_calculated_input + (1 - beta2) * d_raw_input.array().square().matrix();
+            
+            Eigen::MatrixXd m_hat = beta1 * m_calculated_input / (1 - pow(beta1,t));
+            Eigen::MatrixXd v_hat = beta2 * v_calculated_input / (1 - pow(beta2,t));
+
+            Eigen::MatrixXd new_raw_input = input - learning_rate * weight_decay * input;
+            new_raw_input = new_raw_input - learning_rate * (m_calculated_input.array() / (v_calculated_input.array().sqrt() + eps)).matrix();
+
+            calculated_input = new_raw_input;
+        }
+
     public:
 
         TransformersBlock(){
@@ -304,13 +512,17 @@ class TransformersBlock{
             linear_layer = Linear();
         }
 
-        TransformersBlock(int dimensions, int attn_output_dim, int vocab_size): dimensions(dimensions), attn_output_dim(attn_output_dim), vocab_size(vocab_size) {
+        TransformersBlock(int seq_len, int dimensions, int attn_output_dim, int vocab_size): 
+                          seq_len(seq_len), dimensions(dimensions), attn_output_dim(attn_output_dim), vocab_size(vocab_size) {
 
             attention = SingleHeadAttention(dimensions, attn_output_dim);
             feed_forward = FeedForward(dimensions, 4, 4);
             linear_layer = Linear(dimensions, vocab_size);
 
-            weights_final = Eigen::MatrixXd(dimensions, vocab_size);
+            //weights_final = Eigen::MatrixXd(dimensions, vocab_size);
+            calculated_input = Eigen::MatrixXd::Zero(seq_len, dimensions);
+            m_calculated_input = Eigen::MatrixXd::Zero(seq_len, dimensions);
+            v_calculated_input = Eigen::MatrixXd::Zero(seq_len, dimensions);
 
             gamma1 = Eigen::VectorXd::Ones(dimensions);
             beta1 = Eigen::VectorXd::Ones(dimensions);
@@ -368,7 +580,7 @@ class TransformersBlock{
             return maxIndex;
         }
 
-        void backpropagation(Eigen::VectorXd actual){
+        void backpropagation(Eigen::VectorXd actual, const double learning_rate, const int t ){
             
             Eigen::VectorXd d_logits = logits_b.transpose() - actual;
 
@@ -384,9 +596,9 @@ class TransformersBlock{
 
             Eigen::MatrixXd weights_final = linear_layer.get_weights_final();
 
-            Eigen::VectorXd d_cont_inp_last = weights_final * d_logits;
+            Eigen::VectorXd d_cont_inp_last = weights_final.transpose() * d_logits;
 
-            cout << "d cont inp : " << d_cont_inp_last.transpose() << endl;
+            cout << "d cont inp : " << d_cont_inp_last << endl;
 
             Eigen::MatrixXd d_cont_inp = Eigen::MatrixXd::Zero(contextualized_input.rows(), contextualized_input.cols());
 
@@ -445,6 +657,10 @@ class TransformersBlock{
             Eigen::MatrixXd d_attn_Q = ( d_scores * attn_K ) / sqrt(d_k);
             Eigen::MatrixXd d_attn_K = ((attn_Q.transpose() * d_scores).transpose()) / sqrt(d_k);
 
+            Eigen::MatrixXd d_w_k = input.transpose() * d_attn_K;
+            Eigen::MatrixXd d_w_q = input.transpose() * d_attn_Q;
+            Eigen::MatrixXd d_w_v = input.transpose() * d_attn_V;
+
             cout << "d_K: " << d_attn_K << endl;
 
             Eigen::MatrixXd w_q = attention.get_w_q();
@@ -453,6 +669,21 @@ class TransformersBlock{
 
             // every row of d_raw_input points to the gradient of the embedding
             Eigen::MatrixXd d_raw_input = d_input_attn + (d_attn_K * w_k + d_attn_Q * w_q + d_attn_V * w_v);
+            
+
+            // Updating
+            linear_layer.update_weigths_final(d_weight_final, t, learning_rate);
+            
+            feed_forward.update_weight_2(d_weight_2, learning_rate, t);
+            feed_forward.update_weight_1(d_weight_1, learning_rate, t);
+            
+            attention.update_w_o(d_w_o, learning_rate, t);
+            
+            attention.update_w_k(d_w_k, learning_rate, t);
+            attention.update_w_q(d_w_q, learning_rate, t);
+            attention.update_w_v(d_w_v, learning_rate, t);
+            cout << "here so far" << endl;
+            update_input(d_raw_input, learning_rate, t);
         }
 
 };
@@ -501,7 +732,7 @@ int main(){
             6, 7, 8, 9, 10,
             11, 12, 13, 14, 15;*/
 
-    TransformersBlock tr_block(embedding_dimension, embedding_dimension, vocab_size); // attn_output_dim is the same with embed_dim for now
+    TransformersBlock tr_block(sequntial_len, embedding_dimension, embedding_dimension, vocab_size); // attn_output_dim is the same with embed_dim for now
 
     Eigen::Index predicted_token_index = tr_block.main_logic(encoded_input);
     
@@ -510,7 +741,9 @@ int main(){
     actual << 0,0,1,0,0;
 
     cout << "actual: " << actual << endl;
-    tr_block.backpropagation(actual);
+    double learning_rate = 0.001;
+    int t = 1;
+    tr_block.backpropagation(actual, learning_rate, t);
 
     return 0;
 }
